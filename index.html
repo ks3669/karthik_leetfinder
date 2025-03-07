@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeetCode Question Similarity</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="w-full max-w-4xl mx-auto px-4 py-8 md:px-6 md:py-12">
+        <div class="flex justify-center gap-4 mb-6">
+            <button id="show-finder" class="px-4 py-2 bg-blue-500 text-white rounded-md">Problem Finder</button>
+            <button id="show-comparator" class="px-4 py-2 bg-blue-500 text-white rounded-md">Problem Comparator</button>
+        </div>
+
+        <!-- Problem Finder -->
+        <div id="problem-finder" class="flex flex-col gap-6">
+            <h1 class="text-3xl font-bold">LeetCode Problem Finder</h1>
+            <p class="text-gray-500">Enter a LeetCode problem URL to find similar problems.</p>
+
+            <form id="similarity-form" class="flex items-center gap-4">
+                <input id="leetcode-url" class="border px-4 py-2 w-full" placeholder="Enter a LeetCode problem URL" type="text" />
+                <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-md">Search</button>
+            </form>
+
+            <div id="loading-spinner" class="hidden text-center">
+                <p class="text-gray-500">Fetching data...</p>
+            </div>
+
+            <table class="w-full border mt-4">
+                <thead>
+                    <tr class="bg-gray-100">
+                        <th class="border px-4 py-2">Problem Title</th>
+                        <th class="border px-4 py-2">Similarity Score</th>
+                    </tr>
+                </thead>
+                <tbody id="results-table"></tbody>
+            </table>
+
+            <!-- Pagination Buttons -->
+            <div id="pagination-container" class="flex justify-between mt-4 hidden">
+                <button id="prev-page" class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md disabled:opacity-50" disabled>Previous</button>
+                <button id="next-page" class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md disabled:opacity-50" disabled>Next</button>
+            </div>
+        </div>
+
+        <!-- Problem Comparator -->
+        <div id="problem-comparator" class="flex flex-col gap-6 hidden">
+            <h1 class="text-3xl font-bold">LeetCode Problem Comparator</h1>
+            <p class="text-gray-500">Enter two LeetCode problem URLs to compare their similarity.</p>
+
+            <form id="comparison-form" class="flex flex-col gap-4">
+                <input id="leetcode-url-1" class="border px-4 py-2 w-full" placeholder="Enter first problem URL" type="text" />
+                <input id="leetcode-url-2" class="border px-4 py-2 w-full" placeholder="Enter second problem URL" type="text" />
+                <button type="submit" class="px-4 py-2 bg-gray-900 text-white rounded-md">Compare</button>
+            </form>
+
+            <div id="comparison-result" class="hidden text-center">
+                <p class="text-gray-500">Similarity Score: <span id="similarity-score"></span>%</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const csvParts = [
+            "sorted_similarities_part_1.csv",
+            "sorted_similarities_part_2.csv",
+            "sorted_similarities_part_3.csv",
+            "sorted_similarities_part_4.csv",
+            "sorted_similarities_part_5.csv",
+            "sorted_similarities_part_6.csv"
+        ];
+
+        async function fetchSimilarityData(problemName) {
+            for (const file of csvParts) {
+                try {
+                    const response = await fetch(file);
+                    if (!response.ok) continue; // Skip if file not found
+
+                    const text = await response.text();
+                    const rows = text.split("\n").map(row => row.split(","));
+                    const headers = rows[0].map(h => h.trim());
+
+                    const fileIndex = headers.indexOf(problemName);
+                    if (fileIndex === -1) continue;
+
+                    return rows.slice(1)
+                        .map(row => ({
+                            fileName: row[0].trim(),
+                            score: parseFloat(row[fileIndex])
+                        }))
+                        .filter(entry => !isNaN(entry.score) && entry.score >= 0.60 && entry.fileName !== problemName)
+                        .sort((a, b) => b.score - a.score);
+                } catch (error) {
+                    console.error(`Error reading ${file}:`, error);
+                }
+            }
+            alert(`Problem "${problemName}" not found.`);
+            return [];
+        }
+
+        document.getElementById("similarity-form").addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const url = document.getElementById("leetcode-url").value.trim();
+            const problemName = url.split("/problems/")[1]?.split("/")[0];
+
+            if (!problemName) {
+                alert("Invalid URL format. Please enter a valid LeetCode problem URL.");
+                return;
+            }
+
+            document.getElementById("loading-spinner").classList.remove("hidden");
+
+            const similarities = await fetchSimilarityData(problemName);
+            document.getElementById("loading-spinner").classList.add("hidden");
+
+            const resultsTable = document.getElementById("results-table");
+            resultsTable.innerHTML = "";
+
+            if (similarities.length === 0) {
+                resultsTable.innerHTML = "<tr><td colspan='2' class='text-center'>No similar problems found.</td></tr>";
+                return;
+            }
+
+            let currentPage = 1;
+            const resultsPerPage = 10;
+            const totalPages = Math.ceil(similarities.length / resultsPerPage);
+
+            function renderPage(page) {
+                resultsTable.innerHTML = "";
+                const start = (page - 1) * resultsPerPage;
+                const end = start + resultsPerPage;
+                const pageResults = similarities.slice(start, end);
+
+                pageResults.forEach(({ fileName, score }) => {
+                    const row = `<tr>
+                        <td class="border px-4 py-2"><a href="https://leetcode.com/problems/${fileName}/" target="_blank">${fileName.replace(/-/g, ' ')}</a></td>
+                        <td class="border px-4 py-2">${(score * 100).toFixed(2)}%</td>
+                    </tr>`;
+                    resultsTable.innerHTML += row;
+                });
+
+                document.getElementById("prev-page").disabled = (page === 1);
+                document.getElementById("next-page").disabled = (page === totalPages);
+                document.getElementById("pagination-container").classList.remove("hidden");
+            }
+
+            document.getElementById("prev-page").onclick = () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderPage(currentPage);
+                }
+            };
+
+            document.getElementById("next-page").onclick = () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderPage(currentPage);
+                }
+            };
+
+            renderPage(currentPage);
+        });
+
+        document.getElementById("show-finder").addEventListener("click", () => {
+            document.getElementById("problem-finder").classList.remove("hidden");
+            document.getElementById("problem-comparator").classList.add("hidden");
+        });
+
+        document.getElementById("show-comparator").addEventListener("click", () => {
+            document.getElementById("problem-finder").classList.add("hidden");
+            document.getElementById("problem-comparator").classList.remove("hidden");
+        });
+    </script>
+</body>
+</html>
